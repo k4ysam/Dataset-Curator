@@ -1,0 +1,11 @@
+streamlit
+playwright
+beautifulsoup4
+requests
+icrawler
+sentence-transformers
+torch
+Pillow
+numpy
+scikit-learn
+aiohttp
