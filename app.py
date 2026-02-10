@@ -216,12 +216,10 @@ with tab_scraper:
         with col1:
             if st.button("Select All Scraped URLs"):
                 st.session_state.basket.update(st.session_state.scraped_urls)
-        with col2:
-            if st.button("Analyze & Compute Embeddings (Scraped)"):
-                import aiohttp
-                count = asyncio.run(download_and_embed(st.session_state.scraped_urls))
-                st.session_state["analysis_done_count"] = count
                 st.rerun()
+        with col2:
+             # Placeholder for alignment if needed, or just remove col2
+             pass
 
         if "analysis_done_count" in st.session_state:
             count = st.session_state.pop("analysis_done_count")
@@ -245,7 +243,7 @@ with tab_scraper:
                     
                     # Controls
                     # Just Selection, no Similar button as requested
-                    if st.checkbox("", value=is_selected, key=f"sel_{i}"):
+                    if st.checkbox("Select", label_visibility="collapsed", value=is_selected, key=f"sel_{i}"):
                         st.session_state.basket.add(url)
                     else:
                         st.session_state.basket.discard(url)
@@ -337,12 +335,10 @@ with tab_local:
         with l_col1:
              if st.button("Select All Local Images"):
                 st.session_state.basket.update(st.session_state.local_images)
+                st.rerun()
         with l_col2:
-            if st.button("Analyze & Compute Embeddings (Local)"):
-                # No download needed, just embed
-                import aiohttp
-                count = asyncio.run(download_and_embed(st.session_state.local_images))
-                st.success(f"Computed embeddings for {count} local images.")
+             # Removed Analyze button
+             pass
 
         # Grid for Local Images
         l_cols = st.columns(4)
