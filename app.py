@@ -55,7 +55,11 @@ async def download_and_embed(urls):
     Downloads images that aren't in cache, and computes embeddings for them.
     Updates session_state.
     """
-    missing_urls = [u for u in urls if u not in st.session_state.images_cache]
+    # Filter out local images from download list, they are already in cache if present
+    # Local images have "local::" prefix
+    urls_to_download = [u for u in urls if not u.startswith("local::")]
+    
+    missing_urls = [u for u in urls_to_download if u not in st.session_state.images_cache]
     
     if missing_urls:
         with st.spinner(f"Downloading {len(missing_urls)} images for analysis..."):
@@ -75,7 +79,7 @@ async def download_and_embed(urls):
                 if img:
                      st.session_state.images_cache[url] = img
     
-    # Compute embeddings for new images
+    # Compute embeddings for new images (local or downloaded)
     valid_urls_to_embed = [u for u in urls if u in st.session_state.images_cache and u not in st.session_state.embeddings]
     
     newly_embedded = 0
@@ -90,30 +94,43 @@ async def download_and_embed(urls):
     
     return newly_embedded
 
-def find_similar(target_url):
+    return newly_embedded
+
+def find_similar(target_url, source_list=None):
     """
-    Re-ranks lists based on similarity to target_url
+    Re-ranks lists based on similarity to target_url.
+    If source_list is provided, only ranks images in that list.
+    Returns the sorted list.
     """
     if target_url not in st.session_state.embeddings:
         st.warning("Embedding not found for this image.")
-        return
+        return []
 
     target_emb = st.session_state.embeddings[target_url]
     
     # Calculate similarity with ALL other known embeddings
-    urls = list(st.session_state.embeddings.keys())
-    embs = np.array([st.session_state.embeddings[u] for u in urls])
+    # Optimally, we should only compare against source_list if provided, but for now filtering after is fine or we can slice embeddings.
+    # To keep it simple and correct:
+    
+    if source_list is None:
+        source_list = list(st.session_state.embeddings.keys())
+        
+    # Filter source_list to only those that have embeddings
+    valid_source = [u for u in source_list if u in st.session_state.embeddings]
+    
+    if not valid_source:
+        st.warning("No images to compare against.")
+        return []
+
+    embs = np.array([st.session_state.embeddings[u] for u in valid_source])
     
     sims = processor.calculate_similarity(target_emb, embs)
     
     # Sort urls by similarity
     # zip, sort, unzip
-    sorted_pairs = sorted(zip(urls, sims), key=lambda x: x[1], reverse=True)
-    sorted_urls = [u for u, s in sorted_pairs]
-    
-    # Update display list
-    st.session_state.scraped_urls = sorted_urls
-    st.success("Gallery re-ranked by similarity!")
+    sorted_pairs = sorted(zip(valid_source, sims), key=lambda x: x[1], reverse=True)
+    # Return pairs (url, score)
+    return sorted_pairs
 
 # --- Sidebar ---
 with st.sidebar:
@@ -158,12 +175,6 @@ with st.sidebar:
             st.error("Basket is empty!")
         else:
             # Need to ensure all basket images are downloaded
-            # (they might be selected but not downloaded if we only scraped URLs?)
-            # Wait, user requirement: "DO NOT download files to disk initially; only store and display URLs."
-            # "When 'Find Similar' is clicked, download that image..."
-            # So images in gallery might NOT be downloaded yet.
-            # But to Export, we need them.
-            
             urls_to_download = [u for u in st.session_state.basket if u not in st.session_state.images_cache]
             if urls_to_download:
                 import aiohttp
@@ -192,64 +203,194 @@ with st.sidebar:
 # --- Main Gallery ---
 st.title("Dataset Curator")
 
-if not st.session_state.scraped_urls:
-    st.info("Start by scraping some images from the sidebar.")
-else:
-    # Action Bar
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("Select All URLs"):
-            st.session_state.basket.update(st.session_state.scraped_urls)
-    with col2:
-        if st.button("Analyze & Compute Embeddings (All)"):
-            import aiohttp
-            count = asyncio.run(download_and_embed(st.session_state.scraped_urls))
-            st.session_state["analysis_done_count"] = count
-            st.rerun()
+# Tabs for Mode Selection
+tab_scraper, tab_local = st.tabs(["Web Scraper", "Local Import"])
 
-    if "analysis_done_count" in st.session_state:
-        count = st.session_state.pop("analysis_done_count")
-        if count > 0:
-            st.success(f"Successfully analyzed {count} new images!")
-        else:
-            st.info("Analysis complete. No new images needed analysis.")
+# --- TAB 1: Web Scraper ---
+with tab_scraper:
+    if not st.session_state.scraped_urls:
+        st.info("Start by scraping some images from the sidebar.")
+    else:
+        # Action Bar
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("Select All Scraped URLs"):
+                st.session_state.basket.update(st.session_state.scraped_urls)
+        with col2:
+            if st.button("Analyze & Compute Embeddings (Scraped)"):
+                import aiohttp
+                count = asyncio.run(download_and_embed(st.session_state.scraped_urls))
+                st.session_state["analysis_done_count"] = count
+                st.rerun()
 
-    # Grid
-    cols = st.columns(4)
-    for i, url in enumerate(st.session_state.scraped_urls):
-        col = cols[i % 4]
-        with col:
-            # Display image. If cached, use PIL, else use URL directly
-            # Streamlit image can take URL
-            
-            is_selected = url in st.session_state.basket
-            
-            # Use container for layout
-            with st.container(border=True):
-                if url in st.session_state.images_cache:
-                    st.image(st.session_state.images_cache[url], use_container_width=True)
-                else:
-                    st.image(url, use_container_width=True)
+        if "analysis_done_count" in st.session_state:
+            count = st.session_state.pop("analysis_done_count")
+            if count > 0:
+                st.success(f"Successfully analyzed {count} new images!")
+            else:
+                st.info("Analysis complete. No new images needed analysis.")
+
+        # Grid for Scraped Images
+        cols = st.columns(4)
+        for i, url in enumerate(st.session_state.scraped_urls):
+            col = cols[i % 4]
+            with col:
+                is_selected = url in st.session_state.basket
                 
-                # Controls
-                c1, c2 = st.columns([1, 3])
-                with c1:
-                    # Basket toggle
-                    if st.checkbox("Select", value=is_selected, key=f"sel_{i}"):
+                with st.container(border=True):
+                    if url in st.session_state.images_cache:
+                        st.image(st.session_state.images_cache[url], use_container_width=True)
+                    else:
+                        st.image(url, use_container_width=True)
+                    
+                    # Controls
+                    # Just Selection, no Similar button as requested
+                    if st.checkbox("", value=is_selected, key=f"sel_{i}"):
                         st.session_state.basket.add(url)
                     else:
                         st.session_state.basket.discard(url)
+
+# --- TAB 2: Local Import ---
+if "local_images" not in st.session_state:
+    st.session_state.local_images = [] # List of unique IDs (local::{filename}::{uuid})
+if "local_sim_scores" not in st.session_state:
+    st.session_state.local_sim_scores = {} # uid -> score
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+
+with tab_local:
+    # File Uploader handles both images and zip
+    # Use key to allow resetting
+    uploaded_files = st.file_uploader(
+        "Choose images or zip files from your computer", 
+        accept_multiple_files=True, 
+        type=['png', 'jpg', 'jpeg', 'webp', 'zip'],
+        key=f"uploader_{st.session_state.uploader_key}"
+    )
+    
+    if uploaded_files:
+        import zipfile
+        import uuid
+        
+        new_files_count = 0
+        for uploaded_file in uploaded_files:
+            # Check file type
+            if uploaded_file.name.lower().endswith(".zip"):
+                 # Handle Zip
+                 try:
+                     with zipfile.ZipFile(uploaded_file) as z:
+                         for filename in z.namelist():
+                             # Simple filter for images
+                             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                                 with z.open(filename) as f:
+                                     # Load image bytes
+                                     img_bytes = f.read()
+                                     image = Image.open(io.BytesIO(img_bytes))
+                                     
+                                     # Unique ID to allow duplicate filenames from diff folders
+                                     # Use prefix local::{filename}::{uuid}
+                                     unique_start = f"local::{filename}::{uuid.uuid4()}"
+                                     
+                                     st.session_state.images_cache[unique_start] = image
+                                     st.session_state.local_images.append(unique_start)
+                                     new_files_count += 1
+                 except Exception as e:
+                     st.error(f"Error processing zip {uploaded_file.name}: {e}")
+            else:
+                # Handle Image
+                # Unique ID
+                file_id = f"local::{uploaded_file.name}::{uuid.uuid4()}"
                 
-                with c2:
-                    if st.button("🔍 Similar", key=f"sim_{i}"):
-                        # Ensure this image is downloaded/embedded
-                        if url not in st.session_state.embeddings:
-                             import aiohttp
-                             asyncio.run(download_and_embed([url]))
-                             
-                        if url in st.session_state.embeddings:
-                            find_similar(url)
-                            st.rerun()
+                try:
+                    image = Image.open(uploaded_file)
+                    st.session_state.images_cache[file_id] = image
+                    st.session_state.local_images.append(file_id)
+                    new_files_count += 1
+                except Exception as e:
+                    st.error(f"Error loading {uploaded_file.name}: {e}")
+        
+        if new_files_count > 0:
+            st.success(f"Imported {new_files_count} images.")
+            # Reset uploader for addictive workflow
+            st.session_state.uploader_key += 1
+            st.rerun()
+    
+    # Clear Button
+    if st.button("Clear Local Images"):
+        # Remove local images from cache to free memory? Or just clear list?
+        # Better to clear cache too for local items
+        for uid in st.session_state.local_images:
+            if uid in st.session_state.images_cache:
+                del st.session_state.images_cache[uid]
+            if uid in st.session_state.embeddings:
+                del st.session_state.embeddings[uid]
+                
+        st.session_state.local_images = []
+        st.session_state.local_sim_scores = {}
+        st.rerun()
+
+    if st.session_state.local_images:
+        st.caption(f"Imported {len(st.session_state.local_images)} images.")
+        
+        # Action Bar for Local
+        l_col1, l_col2 = st.columns([1, 1])
+        with l_col1:
+             if st.button("Select All Local Images"):
+                st.session_state.basket.update(st.session_state.local_images)
+        with l_col2:
+            if st.button("Analyze & Compute Embeddings (Local)"):
+                # No download needed, just embed
+                import aiohttp
+                count = asyncio.run(download_and_embed(st.session_state.local_images))
+                st.success(f"Computed embeddings for {count} local images.")
+
+        # Grid for Local Images
+        l_cols = st.columns(4)
+        for i, uid in enumerate(st.session_state.local_images):
+            col = l_cols[i % 4]
+            with col:
+                is_selected = uid in st.session_state.basket
+                
+                with st.container(border=True):
+                    # Caption: filename + score if available
+                    # Format: local::{filename}::{uuid}
+                    parts = uid.split("::")
+                    # parts[0] is 'local', parts[1] is filename, parts[2] is uuid
+                    if len(parts) >= 2:
+                        caption_text = parts[1]
+                    else:
+                        caption_text = uid # Fallback
+
+                    if uid in st.session_state.local_sim_scores:
+                        score = st.session_state.local_sim_scores[uid]
+                        caption_text += f"\nSim: {score:.4f}"
+                    
+                    # Show image from cache
+                    st.image(st.session_state.images_cache[uid], use_container_width=True, caption=caption_text)
+                    
+                    # Controls
+                    lc1, lc2 = st.columns([1, 3])
+                    with lc1:
+                        if st.checkbox("Select", label_visibility="collapsed", value=is_selected, key=f"l_sel_{i}"):
+                            st.session_state.basket.add(uid)
                         else:
-                            st.error("Failed to process image for similarity search.")
+                            st.session_state.basket.discard(uid)
+                    
+                    with lc2:
+                        if st.button("🔍 Similar", key=f"l_sim_{i}"):
+                            # 1. Ensure ALL local images are embedded first to prevent "vanishing"
+                            # This is fast for local images (no network)
+                            import aiohttp
+                            asyncio.run(download_and_embed(st.session_state.local_images))
+                                 
+                            if uid in st.session_state.embeddings:
+                                sorted_pairs = find_similar(uid, st.session_state.local_images)
+                                if sorted_pairs:
+                                    # Update listing order
+                                    st.session_state.local_images = [u for u, s in sorted_pairs]
+                                    # Store scores for display
+                                    st.session_state.local_sim_scores = {u: s for u, s in sorted_pairs}
+                                    st.rerun()
+                            else:
+                                st.error("Failed to process image.")
 
