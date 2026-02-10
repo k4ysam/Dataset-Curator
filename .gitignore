@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Verification & Debug Scripts
+verify_backend.py
+verify_local_logic.py
+verify_scrapers.py
+reproduce_issue.py
+tumblr_debug.html
+
+# Mac
+.DS_Store
