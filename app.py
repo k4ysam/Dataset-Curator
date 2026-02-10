@@ -8,6 +8,36 @@ import numpy as np
 # Adjust python path if needed or rely on src package
 import sys
 import os
+import subprocess
+
+# Ensure Playwright browsers are installed
+def ensure_playwright_installed():
+    """
+    Checks if Playwright browsers are installed.
+    If not, installs them.
+    This is necessary for Streamlit Cloud where we can't run 'playwright install' manually.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            # Try to launch browser to see if it works
+            p.chromium.launch()
+    except Exception:
+        # If launch fails, or playwright not installed, try installing
+        print("Playwright browsers not found. Installing...")
+        try:
+            # Install chromium only to save time/space
+            subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+            # Also install deps if on linux (Streamlit Cloud is Linux)
+            if sys.platform == "linux":
+                 subprocess.run([sys.executable, "-m", "playwright", "install-deps", "chromium"], check=True)
+            print("Playwright installation complete.")
+        except Exception as e:
+            print(f"Error installing Playwright: {e}")
+
+# Run setup
+ensure_playwright_installed()
+
 sys.path.append(os.getcwd())
 
 from src.scrapers.tumblr import TumblrScraper
@@ -16,6 +46,7 @@ from src.scrapers.pinterest import PinterestScraper
 from src.ai.processor import ImageProcessor
 from src.utils.downloader import download_images_parallel, download_image
 from src.utils.exporter import create_dataset_zip, generate_filename
+
 
 # --- Configuration & Styling ---
 st.set_page_config(page_title="Dataset Curator AI", layout="wide")

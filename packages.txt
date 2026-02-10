@@ -1,0 +1,8 @@
+chromium
+chromium-driver
+libnss3
+libnspr4
+libgbm1
+libasound2
+libavcodec-extra
+libgstreamer-plugins-base1.0-0
