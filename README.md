@@ -1,4 +1,4 @@
-# Dataset Curator AI
+# Dataset Curator
 
 A powerful tool to scrape, curate, and export image datasets using semantic similarity. Built with Streamlit and Playwright.
 
@@ -13,19 +13,10 @@ A powerful tool to scrape, curate, and export image datasets using semantic simi
 
 ![Scraping Results](assets/results.png)
 
-## Access the App
-
-You can use the deployed version of the application directly in your browser:
-
-👉 **[datasetcurator.streamlit.app](https://datasetcurator.streamlit.app)**
-
-## Running Locally
-
-If you prefer to run the tool on your own machine, follow these steps:
+follow these steps:
 
 ### Prerequisites
 - Python 3.8+
-- Git
 
 ### Installation
 
